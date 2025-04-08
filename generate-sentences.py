@@ -20,8 +20,6 @@ def katakana_to_hiragana(text):
 # Load sentences from the Tatoeba sentence file
 pairs = []
 with open("jpn_sentences.txt", encoding="utf-8") as f:
-    # reader = csv.reader(f, delimiter='\\t')
-    # jpn_sentences = [row[2] for row in reader if row[1] == 'jpn' and len(row[2]) < 100]
     for sentence in f:
         try:
             reading = to_kana(sentence)
@@ -30,19 +28,7 @@ with open("jpn_sentences.txt", encoding="utf-8") as f:
             print(e)
             continue
 
-"""
-# Generate (kanji, hiragana) pairs
-pairs = []
-for s in jpn_sentences:
-    try:
-        reading = to_kana(s)
-        pairs.append((s, reading))
-    except Exception as e:
-        continue
-"""
-
 # Save to file
 with open("kanji_hiragana_pairs.tsv", "w", encoding="utf-8") as f:
     for orig, kana in pairs:
         f.write(f"{orig}\t{kana}")
-
