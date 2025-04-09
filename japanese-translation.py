@@ -182,7 +182,9 @@ def predict(model, sentence, input2idx, output2idx, idx2output, max_len=20):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Kanji to Hiragana Converter")
-    parser.add_argument('--train', action='store_true', help="Train the model (default is to skip training)")
+    parser.add_argument('-t', '--train', action='store_true', help="Train the model (default is to skip training)")
+    parser.add_argument('-p', '--path', type=str, default='checkpoints/best_model.pt',
+                        help='The file path to the model to use.')
     args = parser.parse_args()
 
     dataset_pairs = read_tsv_to_tuples('./kanji_hiragana_pairs.tsv')
@@ -210,7 +212,7 @@ if __name__ == '__main__':
     )
     criterion = nn.CrossEntropyLoss(ignore_index=PAD_token)
 
-    checkpoint_path = "checkpoints/best_model.pt"
+    checkpoint_path = args.path
     start_epoch = 0
     if os.path.exists(checkpoint_path):
         print(f"Loading saved model from {checkpoint_path}")
