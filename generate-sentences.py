@@ -1,34 +1,36 @@
-import csv
 from sudachipy import tokenizer
 from sudachipy import dictionary
+from sudachipy import SplitMode
 
-tokenizer_obj = dictionary.Dictionary().create()
-mode = tokenizer.Tokenizer.SplitMode.C
+def convert_kanji_to_hiragana_with_spacing(text):
+    tokenizer_obj = dictionary.Dictionary().create()
+    morphemes = tokenizer_obj.tokenize(text, SplitMode.C)
+    output_parts = []
+    for m in morphemes:
+        reading = m.reading_form()
+        surface = m.surface()
+        # Check if the surface contains kanji
+        if any('\u4e00' <= char <= '\u9faf' for char in surface):
+            # Convert katakana reading to hiragana
+            hiragana_reading = "".join([chr(ord('ぁ') + ord(char) - ord('ァ'))
+                                        if 'ァ' <= char <= 'ン'
+                                        else char
+                                        for char in reading])
+            output_parts.append(hiragana_reading)
+        else:
+            output_parts.append(surface)
+    return "".join(output_parts)
 
-def to_kana(sentence):
-    kana = ''.join([token.reading_form() for token in tokenizer_obj.tokenize(sentence, mode)])
-    return katakana_to_hiragana(kana)
+def process_file_sudachi(input_filepath, output_filepath):
+    with open(input_filepath, 'r', encoding='utf-8') as infile, \
+         open(output_filepath, 'w', encoding='utf-8') as outfile:
+        for line in infile:
+            japanese_sentence = line.strip()
+            converted_sentence = convert_kanji_to_hiragana_with_spacing(japanese_sentence)
+            outfile.write(f"{japanese_sentence}\t{converted_sentence}\n")
 
-def katakana_to_hiragana(text):
-    return text.translate(str.maketrans(
-        "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホ"
-        "マミムメモヤユヨラリルレロワヲンァィゥェォッャュョ",
-        "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほ"
-        "まみむめもやゆよらりるれろわをんぁぃぅぇぉっゃゅょ"
-    ))
-
-# Load sentences from the Tatoeba sentence file
-pairs = []
-with open("jpn_sentences.txt", encoding="utf-8") as f:
-    for sentence in f:
-        try:
-            reading = to_kana(sentence)
-            pairs.append((sentence.strip(),reading))
-        except Exception as e:
-            print(e)
-            continue
-
-# Save to file
-with open("kanji_hiragana_pairs.tsv", "w", encoding="utf-8") as f:
-    for orig, kana in pairs:
-        f.write(f"{orig}\t{kana}")
+if __name__ == "__main__":
+    input_file = "jpn_sentences.txt"
+    output_file = "kanji_hiragana_pairs.tsv"
+    process_file_sudachi(input_file, output_file)
+    print(f"Successfully processed '{input_file}' and saved the modified output to '{output_file}'.")
