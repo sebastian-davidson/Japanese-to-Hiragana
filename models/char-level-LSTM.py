@@ -1,5 +1,3 @@
-# Kanji to Hiragana Converter: Character-level Seq2Seq Model (PyTorch)
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -84,7 +82,7 @@ class Decoder(nn.Module):
         out = self.fc(out.squeeze(1))
         return out, h, c
 
-class Seq2Seq(nn.Module):
+class LSTMSeq2Seq(nn.Module):
     def __init__(self, encoder, decoder, device):
         super().__init__()
         self.encoder = encoder
@@ -213,7 +211,7 @@ if __name__ == '__main__':
 
     encoder = Encoder(len(input2idx), EMB_SIZE, HID_SIZE)
     decoder = Decoder(len(output2idx), EMB_SIZE, HID_SIZE)
-    model = Seq2Seq(encoder, decoder, DEVICE).to(DEVICE)
+    model = LSTMSeq2Seq(encoder, decoder, DEVICE).to(DEVICE)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
