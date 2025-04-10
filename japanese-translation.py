@@ -132,26 +132,24 @@ def train_model(model, dataloader, scheduler, optimizer, criterion, pad_token,
         loss_values.append(avg_loss)
         print(f"Epoch {epoch+1}, Loss: {avg_loss:.4f}")
 
-        if (epoch + 1) % save_every == 0:
-            torch.save({
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),
-                'epoch': epoch + 1,
-                'loss': avg_loss
-            }, f"checkpoints/model_epoch_{epoch+1}.pt")
+        checkpoint_data = {
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
+            'input2idx': input2idx,
+            'output2idx': output2idx,
+            'idx2output': idx2output,
+            'epoch': epoch + 1,
+            'loss': avg_loss
+        }
 
+        if (epoch + 1) % save_every == 0:
+            torch.save(checkpoint_data, f"checkpoints/model_epoch_{epoch+1}.pt")
 
         if avg_loss < best_loss:
             best_loss = avg_loss
             patience_counter = 0
-            torch.save({
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),
-                'epoch': epoch + 1,
-                'loss': avg_loss
-            }, "checkpoints/best_model.pt")
+            torch.save(checkpoint_data, "checkpoints/best_model.pt")
             print("New best model saved.")
         else:
             patience_counter += 1
@@ -180,27 +178,38 @@ def predict(model, sentence, input2idx, output2idx, idx2output, max_len=20):
             input_token = torch.tensor([top1]).to(model.device)
         return ''.join(result)
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Kanji to Hiragana Converter")
     parser.add_argument('-t', '--train', action='store_true', help="Train the model (default is to skip training)")
     parser.add_argument('-p', '--path', type=str, default='checkpoints/best_model.pt',
-                        help='The file path to the model to use.')
+                        help='The file path to the model to use')
     args = parser.parse_args()
 
     dataset_pairs = read_tsv_to_tuples('./kanji_hiragana_pairs.tsv')
-    input2idx, output2idx, idx2output, PAD_token = build_vocab(dataset_pairs)
+    checkpoint_path = args.path
+    start_epoch = 0
+
+    # Try to load vocab + model if checkpoint exists
+    if os.path.exists(checkpoint_path):
+        print(f"Loading saved model from {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        input2idx = checkpoint['input2idx']
+        output2idx = checkpoint['output2idx']
+        idx2output = checkpoint['idx2output']
+        PAD_token = output2idx['<pad>']
+    else:
+        print("No saved model found, building vocab from dataset.")
+        input2idx, output2idx, idx2output, PAD_token = build_vocab(dataset_pairs)
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     EMB_SIZE = 64
     HID_SIZE = 128
     MAX_LEN = 20
     BATCH_SIZE = 64
-    NUM_EPOCHS = 100
+    NUM_EPOCHS = 500
     PATIENCE_LIMIT = 5
     SAVE_EVERY = 5
-
-    train_dataset = KanjiHiraganaDataset(dataset_pairs, input2idx, output2idx, max_len=MAX_LEN)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 
     encoder = Encoder(len(input2idx), EMB_SIZE, HID_SIZE)
     decoder = Decoder(len(output2idx), EMB_SIZE, HID_SIZE)
@@ -212,17 +221,14 @@ if __name__ == '__main__':
     )
     criterion = nn.CrossEntropyLoss(ignore_index=PAD_token)
 
-    checkpoint_path = args.path
-    start_epoch = 0
     if os.path.exists(checkpoint_path):
-        print(f"Loading saved model from {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path, map_location=DEVICE)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         start_epoch = checkpoint.get('epoch', 0)
-    else:
-        print("No saved model found, starting from scratch.")
+
+    train_dataset = KanjiHiraganaDataset(dataset_pairs, input2idx, output2idx, max_len=MAX_LEN)
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=8)
 
     if args.train or not os.path.exists(checkpoint_path):
         train_model(model, train_loader, scheduler, optimizer, criterion, PAD_token,
@@ -231,6 +237,11 @@ if __name__ == '__main__':
     else:
         print("Skipping training (use --train to force training)")
 
-    test_sentences = ["明日は雨です", "彼は学生です"]
-    for sentence in test_sentences:
+    test_sentences = [
+        ("明日は雨です","あすはあめです。"),
+        ("彼は学生です","かれはがくせいです。"),
+        ("彼は生きている間に生け花を生業とした", "かれはいきているまにいけばなをなりわいとした。")
+    ]
+    for sentence, expected_output in test_sentences:
         print(f"Input: {sentence} => Output: {predict(model, sentence, input2idx, output2idx, idx2output, MAX_LEN)}")
+        print(f"Expected output: {expected_output}")
