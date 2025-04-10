@@ -157,7 +157,7 @@ def train_model(model, dataloader, scheduler, optimizer, criterion, pad_token,
         scheduler.step(avg_loss)
 
 # Inference function
-def predict(model, sentence, input2idx, output2idx, idx2output, max_len=20):
+def predict(model, sentence, input2idx, output2idx, idx2output, max_len=64):
     model.eval()
     with torch.no_grad():
         tokens = encode_sentence(sentence, input2idx, max_len)
@@ -184,7 +184,7 @@ if __name__ == '__main__':
                         help='The file path to the model to use')
     args = parser.parse_args()
 
-    dataset_pairs = read_tsv_to_tuples('./kanji_hiragana_pairs.tsv')
+    dataset_pairs = read_tsv_to_tuples('../kanji_hiragana_pairs.tsv')
     checkpoint_path = args.path
     start_epoch = 0
 
@@ -201,10 +201,10 @@ if __name__ == '__main__':
         input2idx, output2idx, idx2output, PAD_token = build_vocab(dataset_pairs)
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    EMB_SIZE = 64
-    HID_SIZE = 128
-    MAX_LEN = 20
-    BATCH_SIZE = 64
+    EMB_SIZE = 256
+    HID_SIZE = 512
+    MAX_LEN = 64
+    BATCH_SIZE = 128
     NUM_EPOCHS = 500
     PATIENCE_LIMIT = 5
     SAVE_EVERY = 5
