@@ -125,7 +125,7 @@ def train_model(model, dataloader, scheduler, optimizer, criterion, pad_token,
             src, tgt = src.to(model.device), tgt.to(model.device)
             optimizer.zero_grad()
             output = model(src, tgt)
-            utput = output[:, 1:].reshape(-1, output.shape[-1])
+            output = output[:, 1:].reshape(-1, output.shape[-1])
             tgt = tgt[:, 1:].reshape(-1)
             loss = criterion(output, tgt)
             loss.backward()
@@ -235,7 +235,7 @@ if __name__ == '__main__':
     EMB_SIZE = 256
     HID_SIZE = 512
     MAX_LEN = 64
-    BATCH_SIZE = 128
+    BATCH_SIZE = 512
     NUM_EPOCHS = 500
     PATIENCE_LIMIT = 5
     SAVE_EVERY = 5
