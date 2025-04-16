@@ -61,7 +61,7 @@ class TransformerSeq2Seq(nn.Module):
 BASE_DIR = os.path.dirname(__file__)
 CHECKPOINT_DIR = os.path.join(BASE_DIR, "checkpoints")
 
-def train_model(model, dataloader, scheduler, optimizer, criterion, pad_token, dataset
+def train_model(model, dataloader, scheduler, optimizer, criterion, pad_token, dataset,
                 num_epochs=100, patience_limit=5, save_every=5, start_epoch=0):
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     best_loss = float('inf')
