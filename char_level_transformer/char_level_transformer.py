@@ -1,64 +1,9 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-import random
-import csv
 import os
-import argparse
 import math # for math.log
 
-# Load Dataset; it's assumed this is a 2-column .tsv file of sentence pairs
-def read_tsv_to_tuples(file_path):
-    data = []
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            for line in file:
-                row = tuple(line.strip().split('\t'))
-                data.append(row)
-    except Exception as e:
-        print(e)
-        return []
-    return data
-
-# Vocabulary setup
-def build_vocab(dataset_pairs):
-    input_strings, output_strings = zip(*dataset_pairs)
-    input_chars = {c for s in input_strings for c in s}
-    output_chars = {c for s in output_strings for c in s}
-
-    special_tokens = ['<pad>', '<sos>', '<eos>']
-    input_vocab = special_tokens + list(input_chars)
-    output_vocab = special_tokens + list(output_chars)
-
-    input2idx = {c: i for i, c in enumerate(input_vocab)}
-    output2idx = {c: i for i, c in enumerate(output_vocab)}
-    idx2output = {i: c for c, i in output2idx.items()}
-    return input2idx, output2idx, idx2output, output2idx['<pad>']
-
-# Encoding function
-def encode_sentence(sentence, vocab, max_len):
-    tokens = [vocab['<sos>']] + [vocab[c] for c in sentence] + [vocab['<eos>']]
-    tokens += [vocab['<pad>']] * (max_len - len(tokens))
-    return tokens[:max_len]
-
-# Custom Dataset
-class KanjiHiraganaDataset(Dataset):
-    def __init__(self, pairs, input2idx, output2idx, max_len=20):
-        self.data = pairs
-        self.input2idx = input2idx
-        self.output2idx = output2idx
-        self.max_len = max_len
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        src, tgt = self.data[idx]
-        src_encoded = torch.tensor(encode_sentence(src, self.input2idx, self.max_len))
-        tgt_encoded = torch.tensor(encode_sentence(tgt, self.output2idx, self.max_len))
-        return src_encoded, tgt_encoded
-
+from common.common import encode_sentence, calculate_cer
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=512):
@@ -73,6 +18,7 @@ class PositionalEncoding(nn.Module):
 
     def forward(self, x):
         return x + self.pe[:, :x.size(1)]
+
         
 class TransformerSeq2Seq(nn.Module):
     def __init__(self, input_vocab_size, output_vocab_size, device, d_model=256, nhead=4, num_layers=3, dropout=0.1, max_len=64):
@@ -112,12 +58,15 @@ class TransformerSeq2Seq(nn.Module):
         return mask.masked_fill(mask == 1, float('-inf')).masked_fill(mask == 0, float(0.0))
 
 
+BASE_DIR = os.path.dirname(__file__)
+CHECKPOINT_DIR = os.path.join(BASE_DIR, "checkpoints")
+
 def train_model(model, dataloader, scheduler, optimizer, criterion, pad_token,
                 num_epochs=100, patience_limit=5, save_every=5, start_epoch=0):
+    os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     best_loss = float('inf')
     patience_counter = 0
     loss_values = []
-    os.makedirs("checkpoints", exist_ok=True)
 
     for epoch in range(start_epoch, num_epochs):
         model.train()
@@ -159,12 +108,12 @@ def train_model(model, dataloader, scheduler, optimizer, criterion, pad_token,
         }
 
         if (epoch + 1) % save_every == 0:
-            torch.save(checkpoint_data, f"checkpoints/model_epoch_{epoch+1}.pt")
+            torch.save(checkpoint_data, os.path.join(CHECKPOINT_DIR, f"model_epoch_{epoch+1}.pt"))
 
         if avg_loss < best_loss:
             best_loss = avg_loss
             patience_counter = 0
-            torch.save(checkpoint_data, "checkpoints/best_model.pt")
+            torch.save(checkpoint_data, os.path.join(CHECKPOINT_DIR, "best_model.pt"))
             print("New best model saved.")
         else:
             patience_counter += 1
@@ -199,6 +148,7 @@ def predict(model, sentence, input2idx, output2idx, idx2output, device, max_len=
 
     return ''.join(idx2output[idx.item()] for idx in output[0][1:] if idx.item() != eos_idx and idx.item() != pad_idx)
 """
+
 
 # Inference function (using beam search)
 def predict(model, sentence, input2idx, output2idx, idx2output, device, max_len=64, beam_width=3):
@@ -242,74 +192,3 @@ def predict(model, sentence, input2idx, output2idx, idx2output, device, max_len=
         return ''.join(
             idx2output[idx] for idx in best_seq[1:] if idx not in (eos_idx, pad_idx)
         )
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Kanji to Hiragana Converter")
-    parser.add_argument('-t', '--train', action='store_true', help="Train the model (default is to skip training)")
-    parser.add_argument('-p', '--path', type=str, default='checkpoints/best_model.pt',
-                        help='The file path to the model to use')
-    args = parser.parse_args()
-
-    dataset_pairs = read_tsv_to_tuples('../kanji_hiragana_pairs.tsv')
-    checkpoint_path = args.path
-    start_epoch = 0
-
-    # Try to load vocab + model if checkpoint exists
-    if os.path.exists(checkpoint_path):
-        print(f"Loading saved model from {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-        input2idx = checkpoint['input2idx']
-        output2idx = checkpoint['output2idx']
-        idx2output = checkpoint['idx2output']
-        PAD_token = output2idx['<pad>']
-    else:
-        print("No saved model found, building vocab from dataset.")
-        input2idx, output2idx, idx2output, PAD_token = build_vocab(dataset_pairs)
-
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    EMB_SIZE = 256
-    HID_SIZE = 512
-    MAX_LEN = 64
-    BATCH_SIZE = 512
-    NUM_EPOCHS = 500
-    PATIENCE_LIMIT = 5
-    SAVE_EVERY = 5
-
-    model = TransformerSeq2Seq(
-        input_vocab_size=len(input2idx),
-        output_vocab_size=len(output2idx),
-        device=DEVICE,
-        d_model=EMB_SIZE,
-        max_len=MAX_LEN,
-    ).to(DEVICE)
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=2, verbose=True
-    )
-    criterion = nn.CrossEntropyLoss(ignore_index=PAD_token)
-
-    if os.path.exists(checkpoint_path):
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        start_epoch = checkpoint.get('epoch', 0)
-
-    train_dataset = KanjiHiraganaDataset(dataset_pairs, input2idx, output2idx, max_len=MAX_LEN)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=8)
-
-    if args.train or not os.path.exists(checkpoint_path):
-        train_model(model, train_loader, scheduler, optimizer, criterion, PAD_token,
-                    num_epochs=NUM_EPOCHS, patience_limit=PATIENCE_LIMIT,
-                    save_every=SAVE_EVERY, start_epoch=start_epoch)
-    else:
-        print("Skipping training (use --train to force training)")
-
-    test_sentences = [
-        ("明日は雨です","あすはあめです。"),
-        ("彼は学生です","かれはがくせいです。"),
-        ("彼は生きている間に生け花を生業とした", "かれはいきているまにいけばなをなりわいとした。")
-    ]
-    for sentence, expected_output in test_sentences:
-        print(f"Input: {sentence} => Output: {predict(model, sentence, input2idx, output2idx, idx2output, DEVICE, MAX_LEN)}")
-        print(f"Expected output: {expected_output}")
