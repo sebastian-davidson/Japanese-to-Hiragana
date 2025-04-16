@@ -57,7 +57,7 @@ def encode_sentence(sentence, vocab, max_len):
 
 # Custom Dataset
 class KanjiHiraganaDataset(Dataset):
-    def __init__(self, pairs, input2idx, output2idx, max_len=20):
+    def __init__(self, pairs, input2idx, output2idx, idx2output, max_len=20):
         self.data = pairs
         self.input2idx = input2idx
         self.output2idx = output2idx

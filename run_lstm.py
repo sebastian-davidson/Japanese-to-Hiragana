@@ -57,12 +57,12 @@ if __name__ == '__main__':
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         start_epoch = checkpoint.get('epoch', 0)
 
-    train_dataset = KanjiHiraganaDataset(dataset_pairs, input2idx, output2idx, MAX_LEN)
+    train_dataset = KanjiHiraganaDataset(dataset_pairs, input2idx, output2idx, idx2output, MAX_LEN)
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=8)
 
     if args.train or not os.path.exists(checkpoint_path):
         train_model(model, train_loader, scheduler, optimizer, criterion, PAD_token,
-                    num_epochs=NUM_EPOCHS, patience_limit=PATIENCE_LIMIT,
+                    train_dataset, num_epochs=NUM_EPOCHS, patience_limit=PATIENCE_LIMIT,
                     save_every=SAVE_EVERY, start_epoch=start_epoch)
     else:
         print("Skipping training (use --train to force training)")
